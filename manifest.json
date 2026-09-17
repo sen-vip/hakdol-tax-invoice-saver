@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "학돌 세금계산서 저장",
+  "description": "여러 세금계산서 사이트에서 업체명·품명·작성일을 확인하고 규칙적인 파일명으로 PDF를 저장합니다.",
+  "version": "1.8.8",
+  "permissions": [
+    "activeTab",
+    "debugger",
+    "downloads",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "세금계산서 저장",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "host_permissions": [
+    "*://*.freebill.co.kr/*",
+    "*://*.ecount.com/*",
+    "*://*.etradebill.co.kr/*"
+  ]
+}

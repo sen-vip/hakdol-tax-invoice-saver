@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>학돌 세금계산서 저장</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <div>
+          <p class="eyebrow">학돌랩</p>
+          <h1>세금계산서 저장</h1>
+        </div>
+        <span class="version">v1.8.8</span>
+      </header>
+
+      <section class="notice">
+        현재 탭에서만 정보를 읽고, 내 PC의 다운로드 폴더에 저장합니다.
+      </section>
+
+      <section id="businessSection" class="card business-card">
+        <div class="section-heading">
+          <h2>1. 사업자번호</h2>
+        </div>
+        <p class="helper-text">최초 한 번 저장하면 가능한 조회 화면에서 자동으로 입력하고 확인까지 누릅니다.</p>
+        <div class="inline-control">
+          <input id="businessNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="000-00-00000" maxlength="12">
+          <button id="fillButton" class="secondary-button" type="button">저장하고 자동 확인</button>
+        </div>
+      </section>
+
+      <section class="card invoice-stage">
+        <div class="section-heading">
+          <h2>2. 파일명 정보</h2>
+          <button id="scanButton" class="text-button" type="button">다시 읽기</button>
+        </div>
+
+        <label>
+          <span>업체명</span>
+          <input id="supplier" type="text" autocomplete="off" placeholder="예: 코웨이(주)">
+        </label>
+
+        <label>
+          <span>품명</span>
+          <input id="item" type="text" autocomplete="off" placeholder="예: 정수기렌탈">
+        </label>
+
+        <label>
+          <span>작성일 <small>선택 · 파일명에는 YYMMDD</small></span>
+          <input id="date" type="text" inputmode="numeric" autocomplete="off" placeholder="YYYYMMDD" maxlength="10">
+        </label>
+
+        <label>
+          <span>합계금액 <small>확인용</small></span>
+          <input id="amount" type="text" readonly placeholder="인식되지 않음">
+        </label>
+      </section>
+
+      <section class="preview-card invoice-stage">
+        <span>저장될 파일명</span>
+        <strong id="filenamePreview">정보를 읽는 중입니다.</strong>
+      </section>
+
+      <section class="card compact invoice-stage">
+        <label>
+          <span>PDF 방향</span>
+          <select id="orientation">
+            <option value="auto">사이트 인쇄 설정 우선</option>
+            <option value="landscape">가로</option>
+            <option value="portrait">세로</option>
+          </select>
+        </label>
+
+      </section>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <div class="invoice-stage">
+        <button id="saveButton" class="primary-button" type="button" disabled>세금계산서 PDF 저장</button>
+        <p class="footnote">사이트에 맞는 저장 방식을 자동으로 선택합니다. 같은 파일명이 있으면 덮어쓰지 않고 (1), (2)가 붙습니다.</p>
+      </div>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

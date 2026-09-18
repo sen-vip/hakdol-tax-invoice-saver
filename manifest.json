@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "학돌 세금계산서 저장",
   "description": "전자세금계산서를 읽어 업체명·품명·작성일로 PDF 파일명을 자동 정리해 저장하는 브라우저 확장도구.",
-  "version": "1.8.14",
+  "version": "1.8.15",
   "permissions": [
     "activeTab",
     "debugger",

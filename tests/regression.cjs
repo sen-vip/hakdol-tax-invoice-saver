@@ -375,13 +375,20 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   assert.match(pdfUtils, /const pageWidth = 595/);
   assert.match(pdfUtils, /const pageHeight = 842/);
   assert.doesNotMatch(popupHtmlForLayout, /<select id="orientation">/);
-  assert.match(popupHtmlForLayout, /id="saveButton"[\s\S]*2\. 파일명 정보/);
+  assert.match(popupHtmlForLayout, /id="saveButton"[\s\S]*파일명 정보 수정/);
   pass("모든 사이트 A4 세로 공통 규칙 + 저장 버튼 상단 이동");
   assert.ok(
     popupHtmlForLayout.indexOf('id="filenamePreview"') < popupHtmlForLayout.indexOf('id="saveButton"'),
     "저장될 파일명 미리보기가 저장 버튼 위에 있어야 합니다."
   );
   pass("저장될 파일명 미리보기를 저장 버튼 위로 이동");
+  assert.match(popupHtmlForLayout, /<h2>사업자번호<\/h2>/);
+  assert.match(popupHtmlForLayout, /<h2>파일명 정보 수정<\/h2>/);
+  assert.doesNotMatch(popupHtmlForLayout, />1\. 사업자번호</);
+  assert.doesNotMatch(popupHtmlForLayout, />2\. 파일명 정보</);
+  assert.match(popupHtmlForLayout, /파일명이 다르면 아래에서 수정할 수 있습니다\./);
+  pass("단계 번호 제거 + 파일명 정보 수정 위계 정리");
+
 
 
 
@@ -450,10 +457,10 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   pass("사이트 PDF 빈 문서 의심 차단 + generic 보수적 호환");
 
   const manifest = JSON.parse(read("manifest.json"));
-  assert.equal(manifest.version, "1.8.14");
+  assert.equal(manifest.version, "1.8.15");
   assert.deepEqual(manifest.permissions, ["activeTab", "debugger", "downloads", "scripting", "storage"]);
   assert.deepEqual(manifest.host_permissions, ["*://*.freebill.co.kr/*", "*://*.ecount.com/*", "*://*.etradebill.co.kr/*", "*://*.taxbill365.com/*"]);
-  pass("v1.8.14 버전 + 기존 호스트 권한 유지");
+  pass("v1.8.15 버전 + 기존 호스트 권한 유지");
   for (const size of [16, 32, 48, 128, 256, 512, 1024]) {
     assert.ok(fs.existsSync(path.join(root, "icons", `icon-${size}.png`)));
   }

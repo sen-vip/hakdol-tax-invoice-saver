@@ -136,7 +136,7 @@ function itemTable(names) {
 
 function metadataTable() {
   return makeTable([
-    ["상호(법인명)", "테스트청소"],
+    ["상호(법인명)", "테스트상사"],
     ["작성일자", "공급가액", "세액"],
     ["년", "월", "일"],
     ["2026", "09", "14"],
@@ -195,14 +195,14 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   };
   vm.createContext(context);
   vm.runInContext(authFunction(), context);
-  const result = await context.completeAccessGateInPage("123-45-67890", true);
+  const result = await context.completeAccessGateInPage("222-22-22222", true);
   return { result, input, events, clicks };
 }
 
 (async () => {
-  const one = extract([metadataTable(), itemTable(["후드목 및 덕트입구청소"])], [{ innerText: "품명: 다른 후보" }]);
-  assert.equal(one.item, "후드목 및 덕트입구청소");
-  assert.equal(one.supplier, "테스트청소");
+  const one = extract([metadataTable(), itemTable(["청소용역"])], [{ innerText: "품명: 다른 후보" }]);
+  assert.equal(one.item, "청소용역");
+  assert.equal(one.supplier, "테스트상사");
   assert.equal(one.date, "20260914");
   assert.equal(one.amount, "660000");
   pass("품목 1행 외 없음 + 기존 메타데이터 인식");
@@ -245,30 +245,30 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
       ["합계금액", "현금"],
       ["440,000", ""]
     ]),
-    itemTable(["컬러복사기렌탈"])
+    itemTable(["복합기렌탈"])
   ], [], { hostname: "invoice.ecount.com", loadAdapters: true });
   assert.equal(ecountInvoice.supplier, "(주)테스트렌탈");
-  assert.equal(ecountInvoice.item, "컬러복사기렌탈");
+  assert.equal(ecountInvoice.item, "복합기렌탈");
   assert.equal(ecountInvoice.date, "20260825");
   assert.equal(ecountInvoice.amount, "440000");
   pass("eCount 작성일 보강 후 업체명·품명·합계금액 회귀 없음");
 
 
   const etradeTable = makeValueTable([
-    ["공급자", "사업자번호", { value: "111-22-33333" }, "공급받는자", "사업자번호", { value: "123-45-67890" }],
-    ["상호(업체명)*", { value: "테스트공급자" }, "상호(업체명)*", { value: "테스트학교" }],
-    ["대표자*", { value: "정갑윤" }, "대표자*", { value: "조인기" }],
+    ["공급자", "사업자번호", { value: "111-11-11111" }, "공급받는자", "사업자번호", { value: "222-22-22222" }],
+    ["상호(업체명)*", { value: "테스트공급자" }, "상호(업체명)*", { value: "테스트중학교" }],
+    ["대표자*", { value: "홍길동" }, "대표자*", { value: "김학교" }],
     ["작성일자*", { value: "2026-08-31" }, "수정사유", { value: "" }],
     ["합계금액", { value: "10,000" }, "현금", { value: "" }],
     ["월", "일", "품목", "규격", "수량", "단가", "공급가액", "세액", "비고"],
-    [{ value: "08" }, { value: "31" }, { value: "테스트품목 1건" }, { value: "-" }, { value: "1" }, { value: "9,091" }, { value: "9,091" }, { value: "909" }, { value: "" }]
+    [{ value: "08" }, { value: "31" }, { value: "사무용품" }, { value: "-" }, { value: "1" }, { value: "9,091" }, { value: "9,091" }, { value: "909" }, { value: "" }]
   ]);
   const etradeAdapter = etradebillAdapter(etradeTable);
   assert.equal(etradeAdapter.readSupplier(), "테스트공급자");
   assert.equal(etradeAdapter.readDate(), "20260831");
   assert.deepEqual(
     JSON.parse(JSON.stringify(etradeAdapter.readItems())),
-    { names: ["테스트품목 1건"], count: 1 }
+    { names: ["사무용품"], count: 1 }
   );
   assert.equal(etradeAdapter.readAmount(), "10,000");
 
@@ -277,16 +277,16 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
     loadAdapters: true
   });
   assert.equal(etradeInvoice.supplier, "테스트공급자");
-  assert.equal(etradeInvoice.item, "테스트품목 1건");
+  assert.equal(etradeInvoice.item, "사무용품");
   assert.equal(etradeInvoice.date, "20260831");
   assert.equal(etradeInvoice.amount, "10000");
-  assert.notEqual(etradeInvoice.supplier, "테스트학교");
+  assert.notEqual(etradeInvoice.supplier, "테스트중학교");
   assert.notEqual(etradeInvoice.item, "단가 공급가액 세액 비고");
   pass("eTradeBill 공급자·작성일·품목·합계금액 전용 추출 + 헤더 오탐 방지");
 
   const smile = await authCase({ body: "SmileEDI 전자(세금)계산서 조회 사업자번호를 입력 후 확인" });
   assert.equal(smile.result.clicked, true);
-  assert.equal(smile.input.value, "1234567890");
+  assert.equal(smile.input.value, "2222222222");
   assert.deepEqual(smile.events, ["input", "change", "blur"]);
   assert.equal(smile.clicks, 1);
   pass("SmileEDI 하이픈 제거·이벤트·값 확인 후 클릭");
@@ -328,6 +328,8 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   pass("generic adapter·UI 스타일 유지 + 기존 printToPDF 옵션 유지");
 
   const printAdapters = read("print-adapters.js");
+  const pdfUtils = read("pdf-utils.js");
+  const popupHtmlForLayout = read("popup.html");
   assert.match(printAdapters, /smileedi\\\.com\$/);
   assert.match(printAdapters, /ecount\\\.com\$/);
   assert.match(printAdapters, /smartbill\\\.co\\\.kr\$/);
@@ -342,10 +344,49 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   pass("기존 출력 adapter 격리 + eCount/HomeTax 임시 숨김 복원");
 
   assert.match(printAdapters, /invoiceEvidence[\s\S]*승인\\s\*번호[\s\S]*공급\\s\*받는\\s\*자/);
-  assert.match(printAdapters, /prepareInvoiceOnly[\s\S]*smartbill/);
+  assert.match(printAdapters, /function junkEvidence/);
+  assert.match(printAdapters, /function hasInvoiceCore/);
+  assert.match(printAdapters, /function prepareInvoiceBoxOnly/);
+  assert.match(printAdapters, /발행\\s\*상태[\s\S]*국세청\\s\*전송[\s\S]*XML\\s\*다운로드/);
+  assert.match(background, /pageCall\(tabId, "prepareInvoiceBoxOnly"\)/);
+  assert.match(background, /invoice box not found; keeping existing fallback/);
   assert.match(background, /smileedi_invoice_capture/);
   assert.match(background, /verifiedPrintTab\(tabId, adapter\)/);
-  pass("SmileEDI 검증된 인쇄 문서 우선·캡처 fallback + SmartBill 본문 출력");
+  pass("계산서 본체 박스 우선 출력 + 부가정보 후순위 + 기존 fallback 유지");
+  assert.match(printAdapters, /taxbill365\\.com/);
+  assert.match(printAdapters, /function invoiceVisualRegion/);
+  assert.match(printAdapters, /multi_table_union/);
+  assert.match(background, /adapter === "taxbill365"/);
+  assert.match(background, /Page\.captureScreenshot/);
+  assert.match(background, /taxbill365_invoice_crop/);
+  pass("TaxBill365 다중-table 계산서 영역을 시각적 crop PDF로 저장");
+  const taxCropStart = background.indexOf('adapter === "taxbill365"');
+  const taxCropEnd = background.indexOf('adapter === "smileedi"', taxCropStart);
+  const taxCropSource = background.slice(taxCropStart, taxCropEnd);
+  assert.match(taxCropSource, /format:\s*"jpeg"/);
+  assert.match(taxCropSource, /quality:\s*95/);
+  assert.doesNotMatch(taxCropSource, /format:\s*"png"/);
+  pass("TaxBill365 crop 이미지를 JPEG로 생성하여 PDF DCTDecode와 포맷 일치");
+  assert.match(taxCropSource, /screenshotPdf\(shot\?\.data,\s*effectiveOrientation\)/);
+  assert.match(taxCropSource, /taxbill365_invoice_crop_portrait/);
+  pass("TaxBill365 crop PDF를 A4 세로로 고정");
+  assert.match(background, /const effectiveOrientation = "portrait"/);
+  assert.match(background, /printOptions\.landscape = false/);
+  assert.match(pdfUtils, /const pageWidth = 595/);
+  assert.match(pdfUtils, /const pageHeight = 842/);
+  assert.doesNotMatch(popupHtmlForLayout, /<select id="orientation">/);
+  assert.match(popupHtmlForLayout, /id="saveButton"[\s\S]*2\. 파일명 정보/);
+  pass("모든 사이트 A4 세로 공통 규칙 + 저장 버튼 상단 이동");
+  assert.ok(
+    popupHtmlForLayout.indexOf('id="filenamePreview"') < popupHtmlForLayout.indexOf('id="saveButton"'),
+    "저장될 파일명 미리보기가 저장 버튼 위에 있어야 합니다."
+  );
+  pass("저장될 파일명 미리보기를 저장 버튼 위로 이동");
+
+
+
+
+
 
   const popupSource = read("popup.js");
   const popupHtml = read("popup.html");
@@ -362,12 +403,12 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   vm.createContext(filenameContext);
   vm.runInContext(`${background.slice(filenameStart, filenameEnd)}\nthis.filenameTest = { buildFilename };`, filenameContext);
   assert.equal(
-    filenameContext.filenameTest.buildFilename({ date: "20260825", supplier: "(주)테스트렌탈", item: "컬러복사기렌탈" }),
-    "세금계산서(260825_(주)테스트렌탈_컬러복사기렌탈).pdf"
+    filenameContext.filenameTest.buildFilename({ date: "20260825", supplier: "(주)테스트렌탈", item: "복합기렌탈" }),
+    "세금계산서(260825_(주)테스트렌탈_복합기렌탈).pdf"
   );
   assert.equal(
-    filenameContext.filenameTest.buildFilename({ date: "", supplier: "테스트청소", item: "후드목 및 덕트입구청소" }),
-    "세금계산서(테스트청소_후드목 및 덕트입구청소).pdf"
+    filenameContext.filenameTest.buildFilename({ date: "", supplier: "테스트상사", item: "청소용역" }),
+    "세금계산서(테스트상사_청소용역).pdf"
   );
   assert.match(popupSource, /세금계산서\(\$\{details\.join\("_"\)\}\)\.pdf/);
   pass("괄호형 파일명 규칙을 미리보기와 실제 다운로드에 동일 적용");
@@ -409,10 +450,16 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   pass("사이트 PDF 빈 문서 의심 차단 + generic 보수적 호환");
 
   const manifest = JSON.parse(read("manifest.json"));
-  assert.equal(manifest.version, "1.8.8");
+  assert.equal(manifest.version, "1.8.14");
   assert.deepEqual(manifest.permissions, ["activeTab", "debugger", "downloads", "scripting", "storage"]);
-  assert.deepEqual(manifest.host_permissions, ["*://*.freebill.co.kr/*", "*://*.ecount.com/*", "*://*.etradebill.co.kr/*"]);
-  pass("v1.8.8 버전 + FreeBill/eCount 유지 + eTradeBill 호스트 권한 추가");
+  assert.deepEqual(manifest.host_permissions, ["*://*.freebill.co.kr/*", "*://*.ecount.com/*", "*://*.etradebill.co.kr/*", "*://*.taxbill365.com/*"]);
+  pass("v1.8.14 버전 + 기존 호스트 권한 유지");
+  for (const size of [16, 32, 48, 128, 256, 512, 1024]) {
+    assert.ok(fs.existsSync(path.join(root, "icons", `icon-${size}.png`)));
+  }
+  assert.equal(manifest.icons["512"], "icons/icon-512.png");
+  pass("고해상도 T 아이콘 자산 16~1024px 포함");
+
 
   console.log("TOTAL", passed);
 })().catch((error) => {

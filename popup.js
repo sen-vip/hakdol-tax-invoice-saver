@@ -424,7 +424,7 @@ async function savePdf(options = {}) {
       type: "SAVE_TAX_INVOICE_PDF",
       tabId: tab.id,
       data,
-      orientation: fields.orientation.value
+      orientation: "portrait"
     });
 
     if (!response?.ok) throw new Error(response?.error || "PDF 저장에 실패했습니다.");
@@ -450,18 +450,15 @@ fields.businessNumber.addEventListener("input", () => {
   else fields.businessNumber.value = digits;
 });
 
-fields.orientation.addEventListener("change", () => {
-  chrome.storage.local.set({ orientation: fields.orientation.value });
-});
 
 scanButton.addEventListener("click", scanPage);
 fillButton.addEventListener("click", fillBusinessNumber);
 saveButton.addEventListener("click", () => savePdf());
 
 (async () => {
-  const settings = await chrome.storage.local.get(["businessNumber", "orientation"]);
+  const settings = await chrome.storage.local.get(["businessNumber"]);
   fields.businessNumber.value = settings.businessNumber || "";
-  fields.orientation.value = settings.orientation || "auto";
+  fields.orientation.value = "portrait";
   setStage("invoice");
   refreshPreview();
   const authResult = await autoHandleAccessGate();

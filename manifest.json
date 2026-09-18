@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "학돌 세금계산서 저장",
-  "description": "여러 세금계산서 사이트에서 업체명·품명·작성일을 확인하고 규칙적인 파일명으로 PDF를 저장합니다.",
-  "version": "1.8.8",
+  "description": "전자세금계산서를 읽어 업체명·품명·작성일로 PDF 파일명을 자동 정리해 저장하는 브라우저 확장도구.",
+  "version": "1.8.14",
   "permissions": [
     "activeTab",
     "debugger",
@@ -17,19 +17,24 @@
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
-    "128": "icons/icon-128.png"
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png",
+    "512": "icons/icon-512.png"
   },
   "action": {
     "default_title": "세금계산서 저장",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
-      "32": "icons/icon-32.png"
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
     }
   },
   "host_permissions": [
     "*://*.freebill.co.kr/*",
     "*://*.ecount.com/*",
-    "*://*.etradebill.co.kr/*"
+    "*://*.etradebill.co.kr/*",
+    "*://*.taxbill365.com/*"
   ]
 }

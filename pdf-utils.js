@@ -45,9 +45,10 @@ async function screenshotPdf(data, orientation = "auto") {
     throw new Error("빈 화면이 감지되어 PDF를 저장하지 않았습니다.");
   }
 
-  const landscape = orientation === "landscape" || (orientation === "auto" && width > height * 1.2);
-  const pageWidth = landscape ? 842 : 595;
-  const pageHeight = landscape ? 595 : 842;
+  // 공통 저장 규칙: 모든 계산서 스크린샷 PDF는 A4 세로.
+  const landscape = false;
+  const pageWidth = 595;
+  const pageHeight = 842;
   const scale = Math.min((pageWidth - 32) / width, (pageHeight - 32) / height);
   if (scale < 0.35) {
     throw new Error("계산서가 너무 길어 한 페이지로 저장하면 읽기 어렵습니다. 사이트의 인쇄 기능을 이용해주세요.");

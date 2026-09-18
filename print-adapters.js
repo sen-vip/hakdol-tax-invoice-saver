@@ -19,6 +19,7 @@
     if (/(^|\.)ecount\.com$/.test(host)) return "ecount";
     if (/(^|\.)smartbill\.co\.kr$/.test(host)) return "smartbill";
     if (/(^|\.)hometax\.go\.kr$/.test(host)) return "hometax";
+    if (/(^|\.)taxbill365\.com$/.test(host)) return "taxbill365";
     return "generic";
   }
 
@@ -38,6 +39,39 @@
     return tests.reduce((score, pattern) => score + Number(pattern.test(source)), 0);
   }
 
+  function junkEvidence(value) {
+    const source = String(value || "").replace(/\s+/g, " ");
+    const tests = [
+      /발행\s*상태/,
+      /발행\s*시간/,
+      /담당자/,
+      /메일\s*주소/,
+      /국세청\s*전송/,
+      /전송\s*상태/,
+      /문서\s*History/i,
+      /신용도/,
+      /고객\s*센터/,
+      /XML\s*다운로드/i,
+      /PDF\s*변환/i,
+      /발행정보\s*포함\s*인쇄/,
+      /현재\s*계산서를?\s*\d+\s*회\s*출력/,
+      /광고|호텔|ERP\s*살펴보기/i
+    ];
+    return tests.reduce((score, pattern) => score + Number(pattern.test(source)), 0);
+  }
+
+  function hasInvoiceCore(value) {
+    const source = String(value || "").replace(/\s+/g, " ");
+    const groups = [
+      /공급\s*자/,
+      /공급\s*받는\s*자/,
+      /품\s*(?:목|명)/,
+      /합계\s*금액/,
+      /(?:작성\s*일자?|공급\s*가액|승인\s*번호)/
+    ];
+    return groups.filter((pattern) => pattern.test(source)).length >= 5;
+  }
+
   function findInvoiceElement() {
     const selectors = "table, article, section, main, [role='document'], div";
     const candidates = [...document.querySelectorAll(selectors)]
@@ -45,15 +79,25 @@
       .map((element) => {
         const value = text(element);
         const evidence = invoiceEvidence(value);
+        const junk = junkEvidence(value);
         const rect = element.getBoundingClientRect();
-        const tableBonus = element.tagName === "TABLE" ? 2 : 0;
-        return { element, value, evidence, rect, tableBonus };
+        const tableBonus = element.tagName === "TABLE" ? 1 : 0;
+        const area = Math.max(1, rect.width * rect.height);
+        return { element, value, evidence, junk, rect, tableBonus, area };
       })
-      .filter((entry) => entry.evidence >= 7 && entry.rect.width >= 350 && entry.rect.height >= 180)
+      .filter((entry) =>
+        entry.evidence >= 7 &&
+        hasInvoiceCore(entry.value) &&
+        entry.rect.width >= 350 &&
+        entry.rect.height >= 180
+      )
       .sort((a, b) => {
+        // "전체 페이지"보다 실제 계산서 표/박스를 우선합니다.
         if (b.tableBonus !== a.tableBonus) return b.tableBonus - a.tableBonus;
-        if (b.evidence !== a.evidence) return b.evidence - a.evidence;
-        return (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height);
+        if (a.junk !== b.junk) return a.junk - b.junk;
+        // 같은 수준이면 가장 작은 공통 컨테이너를 선택합니다.
+        if (a.area !== b.area) return a.area - b.area;
+        return b.evidence - a.evidence;
       });
     return candidates[0]?.element || null;
   }
@@ -199,14 +243,17 @@
     return { applied: true, hidden: pair.length };
   }
 
-  function prepareInvoiceOnly(expectedSite) {
-    if (identify() !== expectedSite || !["smartbill", "smileedi"].includes(expectedSite)) {
+  function prepareInvoiceBoxOnly(expectedSite = "") {
+    if (expectedSite && identify() !== expectedSite) {
       return { applied: false, reason: "wrong_site" };
     }
+
     const invoice = findInvoiceElement();
     if (!invoice) return { applied: false, reason: "invoice_not_found" };
 
-    const state = startRestoreState(`${expectedSite}_invoice_only`);
+    const state = startRestoreState(`${identify()}_invoice_box_only`);
+
+    // 계산서 박스로 올라가는 DOM 경로 외의 sibling은 출력에서 제외합니다.
     let child = invoice;
     for (let parent = invoice.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
       for (const sibling of parent.children) {
@@ -214,17 +261,20 @@
         record(sibling, state.records);
         sibling.style.setProperty("display", "none", "important");
       }
+
       record(parent, state.records);
-      parent.style.setProperty("display", "block", "important");
       parent.style.setProperty("position", "static", "important");
       parent.style.setProperty("float", "none", "important");
-      parent.style.setProperty("width", "100%", "important");
       parent.style.setProperty("max-width", "none", "important");
       parent.style.setProperty("min-width", "0", "important");
+      parent.style.setProperty("min-height", "0", "important");
+      parent.style.setProperty("height", "auto", "important");
+      parent.style.setProperty("overflow", "visible", "important");
       parent.style.setProperty("margin", "0", "important");
       parent.style.setProperty("padding", "0", "important");
       child = parent;
     }
+
     if (child.parentElement === document.body) {
       for (const sibling of document.body.children) {
         if (sibling === child) continue;
@@ -233,7 +283,7 @@
       }
     }
 
-    for (const element of [document.documentElement, document.body, invoice]) {
+    for (const element of [document.documentElement, document.body]) {
       record(element, state.records);
       element.style.setProperty("background", "#fff", "important");
       element.style.setProperty("margin", "0", "important");
@@ -245,13 +295,188 @@
       element.style.setProperty("overflow", "visible", "important");
     }
 
+    // 실제 계산서 박스의 비율/폭은 유지하고 가운데 정렬만 합니다.
+    record(invoice, state.records);
+    invoice.style.setProperty("display", invoice.tagName === "TABLE" ? "table" : "block", "important");
+    invoice.style.setProperty("position", "static", "important");
+    invoice.style.setProperty("float", "none", "important");
+    invoice.style.setProperty("max-width", "100%", "important");
+    invoice.style.setProperty("margin-left", "auto", "important");
+    invoice.style.setProperty("margin-right", "auto", "important");
+    invoice.style.setProperty("break-inside", "avoid", "important");
+    invoice.style.setProperty("page-break-inside", "avoid", "important");
+    invoice.style.setProperty("overflow", "visible", "important");
+
     const style = document.createElement("style");
-    style.id = "hakdol-invoice-print-style";
-    style.textContent = "@page{size:A4 portrait;margin:8mm} @media print{html,body{background:#fff!important;margin:0!important;padding:0!important} button,input[type=button],input[type=submit]{display:none!important}}";
+    style.id = "hakdol-invoice-box-print-style";
+    style.textContent = `
+      @page { size: A4 portrait; margin: 6mm; }
+      @media print {
+        html, body {
+          background: #fff !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          min-height: 0 !important;
+          height: auto !important;
+          overflow: visible !important;
+        }
+        button,
+        input[type="button"],
+        input[type="submit"],
+        [role="button"] {
+          display: none !important;
+        }
+      }
+    `;
     document.documentElement.appendChild(style);
     state.extras.push(style);
+
     const rect = invoice.getBoundingClientRect();
-    return { applied: true, evidence: invoiceEvidence(text(invoice)), width: rect.width, height: rect.height };
+    return {
+      applied: true,
+      evidence: invoiceEvidence(text(invoice)),
+      junk: junkEvidence(text(invoice)),
+      tag: invoice.tagName,
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  // 이전 버전 호출 호환용 wrapper
+  function prepareInvoiceOnly(expectedSite) {
+    return prepareInvoiceBoxOnly(expectedSite);
+  }
+
+
+  function rectToTopWindow(rect) {
+    let x = rect.left;
+    let y = rect.top;
+    let win = window;
+    try {
+      while (win !== win.top) {
+        const frame = win.frameElement;
+        if (!frame || win.parent.getComputedStyle(frame).transform !== "none") return null;
+        const frameRect = frame.getBoundingClientRect();
+        x += frameRect.left + frame.clientLeft;
+        y += frameRect.top + frame.clientTop;
+        win = win.parent;
+      }
+      x += win.scrollX;
+      y += win.scrollY;
+    } catch (_) {
+      return null;
+    }
+    return { x, y, width: rect.width, height: rect.height };
+  }
+
+  function unionRects(rects) {
+    if (!rects.length) return null;
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top
+    };
+  }
+
+  function invoiceVisualRegion() {
+    // TaxBill365 같은 화면은 계산서 본체가 여러 sibling table로 구성되어
+    // "가장 작은 공통 부모"가 발행정보/담당자 영역까지 포함할 수 있습니다.
+    // 이 경우 DOM 부모가 아니라 실제 계산서 표들의 시각적 범위를 합쳐 잘라냅니다.
+    const tables = [...document.querySelectorAll("table")]
+      .filter(visible)
+      .map((element) => {
+        const value = text(element);
+        const rect = element.getBoundingClientRect();
+        return {
+          element,
+          value,
+          rect,
+          evidence: invoiceEvidence(value),
+          junk: junkEvidence(value)
+        };
+      })
+      .filter((entry) =>
+        entry.rect.width >= 250 &&
+        entry.rect.height >= 20 &&
+        entry.rect.width < 6000 &&
+        entry.rect.height < 12000
+      );
+
+    if (!tables.length) return null;
+
+    const titlePattern = /전자\s*(?:세금)?\s*계산서/;
+    const amountPattern = /합계\s*금액/;
+
+    // 한 table 안에 계산서 본체 전체가 있고 부가정보가 없다면 그 table을 그대로 사용합니다.
+    const complete = tables
+      .filter((entry) =>
+        titlePattern.test(entry.value) &&
+        amountPattern.test(entry.value) &&
+        hasInvoiceCore(entry.value) &&
+        entry.junk === 0
+      )
+      .sort((a, b) => (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height))[0];
+
+    if (complete) {
+      const topRect = rectToTopWindow(complete.rect);
+      if (!topRect) return null;
+      const pad = 4;
+      return {
+        x: Math.max(0, topRect.x - pad),
+        y: Math.max(0, topRect.y - pad),
+        width: topRect.width + pad * 2,
+        height: topRect.height + pad * 2,
+        scale: 1,
+        source: "single_table"
+      };
+    }
+
+    const titleTables = tables
+      .filter((entry) => titlePattern.test(entry.value) && entry.junk === 0)
+      .sort((a, b) => a.rect.top - b.rect.top || (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+
+    const amountTables = tables
+      .filter((entry) => amountPattern.test(entry.value) && entry.junk === 0)
+      .sort((a, b) => b.rect.bottom - a.rect.bottom || (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
+
+    const start = titleTables[0];
+    const end = amountTables.find((entry) => !start || entry.rect.bottom >= start.rect.top);
+
+    if (!start || !end) return null;
+
+    const top = start.rect.top - 6;
+    const bottom = end.rect.bottom + 6;
+
+    const invoiceTerms = /(?:전자\s*(?:세금)?\s*계산서|승인\s*번호|공급\s*자|공급\s*받는\s*자|등록\s*번호|작성\s*일자?|공급\s*가액|품\s*(?:목|명)|합계\s*금액|현금|수표|어음|외상미수금)/;
+
+    const included = tables.filter((entry) => {
+      if (entry.junk > 0) return false;
+      if (entry.rect.bottom < top || entry.rect.top > bottom) return false;
+      return invoiceTerms.test(entry.value);
+    });
+
+    const localUnion = unionRects(included.map((entry) => entry.rect));
+    if (!localUnion || localUnion.width < 350 || localUnion.height < 180) return null;
+
+    const topRect = rectToTopWindow(localUnion);
+    if (!topRect) return null;
+
+    const pad = 4;
+    return {
+      x: Math.max(0, topRect.x - pad),
+      y: Math.max(0, topRect.y - pad),
+      width: topRect.width + pad * 2,
+      height: topRect.height + pad * 2,
+      scale: 1,
+      source: "multi_table_union"
+    };
   }
 
   function invoiceRegion() {
@@ -335,7 +560,9 @@
     inspect,
     prepareEcount,
     prepareHometax,
+    prepareInvoiceBoxOnly,
     prepareInvoiceOnly,
+    invoiceVisualRegion,
     invoiceRegion,
     safePrintUrl,
     restore

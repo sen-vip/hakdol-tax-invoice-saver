@@ -145,6 +145,7 @@ async function verifiedPrintTab(tabId, adapter) {
 }
 
 async function printCurrentTabToPdf(tabId, filename, orientation) {
+  const effectiveOrientation = "portrait"; // 공통 규칙: 모든 사이트 A4 세로
   if (busyTabs.has(tabId)) throw new Error("이미 PDF를 만들고 있습니다.");
   busyTabs.add(tabId);
   let outputTabId = tabId;
@@ -174,6 +175,12 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
         target = { tabId: outputTabId };
         strategy = `${adapter}_site_print`;
         console.info("[Hakdol PDF] verified site print document detected");
+
+        const boxed = await pageCall(outputTabId, "prepareInvoiceBoxOnly").catch(() => []);
+        if (preferredFrame(boxed, (result) => result?.applied)) {
+          strategy = `${adapter}_site_print_invoice_box`;
+          console.info("[Hakdol PDF] invoice box isolated in print document");
+        }
       }
     }
 
@@ -187,12 +194,19 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
       await pageCall(tabId, "prepareHometax");
       strategy = "hometax_clean_print";
     } else if (!temporaryTabId && adapter === "smartbill") {
-      const prepared = await pageCall(tabId, "prepareInvoiceOnly", "smartbill");
-      if (preferredFrame(prepared, (result) => result?.applied)) {
-        strategy = "smartbill_invoice_only";
+      // 아래 공통 invoice-box 단계에서 처리합니다.
+      strategy = "smartbill_clean_print";
+    }
+
+    // 사이트별 예외처리를 먼저 적용한 뒤,
+    // 가능한 모든 사이트에서 실제 세금계산서 본체 박스만 남깁니다.
+    if (!temporaryTabId && adapter !== "taxbill365") {
+      const boxed = await pageCall(tabId, "prepareInvoiceBoxOnly").catch(() => []);
+      if (preferredFrame(boxed, (result) => result?.applied)) {
+        strategy = `${adapter}_invoice_box`;
+        console.info("[Hakdol PDF] invoice box isolated:", adapter);
       } else {
-        strategy = "smartbill_generic_fallback";
-        console.info("[Hakdol PDF] invoice-only area not found; generic fallback");
+        console.info("[Hakdol PDF] invoice box not found; keeping existing fallback:", adapter);
       }
     }
 
@@ -207,8 +221,8 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
       scale: 0.95
     };
 
-    if (orientation === "landscape") printOptions.landscape = true;
-    if (orientation === "portrait") printOptions.landscape = false;
+    // 모든 사이트 공통 규칙: 계산서 PDF는 A4 세로로 저장합니다.
+    printOptions.landscape = false;
 
     let data;
     if (temporaryTabId !== null) {
@@ -223,9 +237,9 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
         outputTabId = tabId;
         target = { tabId };
         if (adapter === "smartbill") {
-          const prepared = await pageCall(tabId, "prepareInvoiceOnly", "smartbill");
+          const prepared = await pageCall(tabId, "prepareInvoiceBoxOnly", "smartbill");
           strategy = preferredFrame(prepared, (result) => result?.applied)
-            ? "smartbill_invoice_only_fallback"
+            ? "smartbill_invoice_box_fallback"
             : "smartbill_generic_fallback";
         } else {
           strategy = "smileedi_invoice_capture_fallback";
@@ -236,7 +250,41 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
       }
     }
 
-    if (!data && adapter === "smileedi" && outputTabId === tabId) {
+    if (!data && adapter === "taxbill365" && outputTabId === tabId) {
+      const regions = await pageCall(tabId, "invoiceVisualRegion").catch(() => []);
+      const region = preferredFrame(
+        regions,
+        (result) => result && result.width >= 350 && result.height >= 180
+      )?.result;
+
+      if (region) {
+        console.info("[Hakdol PDF] TaxBill365 invoice visual crop:", region.source || "unknown");
+        // screenshotPdf()는 JPEG bytes를 /DCTDecode 이미지로 PDF에 넣습니다.
+        // PNG를 넘기면 PDF 내부 이미지 포맷이 맞지 않아 빈 페이지처럼 보일 수 있으므로
+        // TaxBill365 crop도 SmileEDI와 동일하게 JPEG로 캡처합니다.
+        const shot = await chrome.debugger.sendCommand(target, "Page.captureScreenshot", {
+          format: "jpeg",
+          quality: 95,
+          captureBeyondViewport: true,
+          clip: {
+            x: region.x,
+            y: region.y,
+            width: region.width,
+            height: region.height,
+            scale: 1
+          }
+        });
+        // TaxBill365 계산서 박스는 원본 화면이 가로로 넓어도
+        // 업무용 보관/출력은 A4 세로가 더 자연스러우므로 portrait로 고정합니다.
+        data = await screenshotPdf(shot?.data, effectiveOrientation);
+        strategy = "taxbill365_invoice_crop_portrait";
+      } else {
+        console.info("[Hakdol PDF] TaxBill365 invoice crop not found; using validated print fallback");
+        const result = await chrome.debugger.sendCommand(target, "Page.printToPDF", printOptions);
+        data = result?.data;
+        strategy = "taxbill365_print_fallback";
+      }
+    } else if (!data && adapter === "smileedi" && outputTabId === tabId) {
       const regions = await pageCall(tabId, "invoiceRegion");
       const region = preferredFrame(regions, (result) => result && result.width >= 350)?.result;
       if (region) {
@@ -247,7 +295,7 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
           captureBeyondViewport: true,
           clip: region
         });
-        data = await screenshotPdf(shot?.data, orientation);
+        data = await screenshotPdf(shot?.data, effectiveOrientation);
         if (!strategy.includes("fallback")) strategy = "smileedi_invoice_capture";
       } else {
         console.info("[Hakdol PDF] SmileEDI invoice region not found; validated print fallback");
@@ -260,7 +308,7 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
       data = result?.data;
     }
 
-    validatePdf(data, ["smileedi", "ecount", "smartbill"].includes(adapter));
+    validatePdf(data, ["smileedi", "ecount", "smartbill", "taxbill365"].includes(adapter));
 
     await detachQuietly(target);
     attached = false;
@@ -382,7 +430,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (/Another debugger is already attached/i.test(raw)) {
         userMessage = "개발자도구가 열려 있어 PDF 저장을 시작하지 못했습니다. 개발자도구를 닫고 다시 시도해주세요.";
       } else if (/restricted by policy|blocked by policy|enterprise policy/i.test(raw)) {
-        userMessage = "학교 PC의 브라우저 보안 정책이 현재 화면 PDF 생성을 제한했습니다. 사이트 PDF 저장 방식을 이용해주세요.";
+        userMessage = "학교 PC의 브라우저 보안 정책이 PDF 생성을 제한했습니다. 사이트의 기본 인쇄/PDF 기능을 이용해주세요.";
       } else if (/Cannot access|not allowed|chrome:\/\//i.test(raw)) {
         userMessage = "이 페이지에서는 저장할 수 없습니다. 실제 세금계산서 화면 탭에서 다시 시도해주세요.";
       }

@@ -1,77 +1,41 @@
-<!doctype html>
-<html lang="ko">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>학돌 세금계산서 저장</title>
-    <link rel="stylesheet" href="popup.css">
-  </head>
-  <body>
-    <main class="app">
-      <header>
-        <div>
-          <p class="eyebrow">학돌랩</p>
-          <h1>세금계산서 저장</h1>
-        </div>
-        <span class="version">v1.8.15</span>
-      </header>
-
-      <section class="notice">
-        현재 탭에서만 정보를 읽고, 내 PC의 다운로드 폴더에 저장합니다.
-      </section>
-
-      <section id="businessSection" class="card business-card">
-        <div class="section-heading">
-          <h2>사업자번호</h2>
-        </div>
-        <p class="helper-text">최초 한 번 저장하면 가능한 조회 화면에서 자동으로 입력하고 확인까지 누릅니다.</p>
-        <div class="inline-control">
-          <input id="businessNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="000-00-00000" maxlength="12">
-          <button id="fillButton" class="secondary-button" type="button">저장하고 자동 확인</button>
-        </div>
-      </section>
-
-      <section class="preview-card invoice-stage">
-        <span>저장될 파일명</span>
-        <strong id="filenamePreview">정보를 읽는 중입니다.</strong>
-      </section>
-
-      <div class="invoice-stage save-stage">
-        <button id="saveButton" class="primary-button" type="button" disabled>세금계산서 PDF 저장</button>
-        <p class="footnote">파일명이 다르면 아래에서 수정할 수 있습니다.</p>
-      </div>
-
-      <section class="card invoice-stage">
-        <div class="section-heading">
-          <h2>파일명 정보 수정</h2>
-          <button id="scanButton" class="text-button" type="button">다시 읽기</button>
-        </div>
-
-        <label>
-          <span>업체명</span>
-          <input id="supplier" type="text" autocomplete="off" placeholder="예: 코웨이(주)">
-        </label>
-
-        <label>
-          <span>품명</span>
-          <input id="item" type="text" autocomplete="off" placeholder="예: 정수기렌탈">
-        </label>
-
-        <label>
-          <span>작성일 <small>선택 · 파일명에는 YYMMDD</small></span>
-          <input id="date" type="text" inputmode="numeric" autocomplete="off" placeholder="YYYYMMDD" maxlength="10">
-        </label>
-
-        <label>
-          <span>합계금액 <small>확인용</small></span>
-          <input id="amount" type="text" readonly placeholder="인식되지 않음">
-        </label>
-      </section>
-
-      <input id="orientation" type="hidden" value="portrait">
-
-      <p id="status" class="status" role="status" aria-live="polite"></p>
-    </main>
-    <script src="popup.js"></script>
-  </body>
-</html>
+{
+  "manifest_version": 3,
+  "name": "학돌 세금계산서 저장",
+  "description": "전자세금계산서를 읽어 업체명·품명·작성일로 PDF 파일명을 자동 정리해 저장하는 브라우저 확장도구.",
+  "version": "1.8.20",
+  "permissions": [
+    "activeTab",
+    "debugger",
+    "downloads",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png",
+    "512": "icons/icon-512.png"
+  },
+  "action": {
+    "default_title": "세금계산서 저장",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "host_permissions": [
+    "*://*.freebill.co.kr/*",
+    "*://*.ecount.com/*",
+    "*://*.etradebill.co.kr/*",
+    "*://*.taxbill365.com/*",
+    "*://*.smartbill.co.kr/*"
+  ]
+}

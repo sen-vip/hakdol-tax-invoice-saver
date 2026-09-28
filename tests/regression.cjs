@@ -322,6 +322,7 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
 
   assert.match(read("popup.css"), /\.version\s*\{/);
   const background = read("background.js");
+  const popupSource = read("popup.js");
   assert.match(background, /adapter !== "generic"/);
   assert.match(background, /strategy = "generic_print"/);
   assert.match(background, /preferCSSPageSize: true,[\s\S]{0,80}scale: 0\.95/);
@@ -353,6 +354,16 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   assert.match(background, /smileedi_invoice_capture/);
   assert.match(background, /verifiedPrintTab\(tabId, adapter\)/);
   pass("계산서 본체 박스 우선 출력 + 부가정보 후순위 + 기존 fallback 유지");
+  assert.match(background, /if \(adapter !== "smileedi"\) return null;/);
+  assert.match(background, /if \(adapter === "smileedi"\) \{/);
+  assert.match(background, /adapter === "smartbill"[\s\S]*invoiceRegion[\s\S]*invoiceVisualRegion/);
+  assert.match(background, /SmartBill current-tab invoice crop/);
+  assert.match(background, /strategy = "smartbill_current_tab_crop"/);
+  assert.match(background, /format:\s*"jpeg"[\s\S]*quality:\s*95/);
+  assert.match(background, /smartbill_current_tab_print_fallback/);
+  assert.match(printAdapters, /expectedSite !== "smileedi"/);
+  pass("SmartBill 현재 탭 계산서 crop 우선 + 세션 의존 인쇄 URL 제거");
+
   assert.match(printAdapters, /taxbill365\\.com/);
   assert.match(printAdapters, /function invoiceVisualRegion/);
   assert.match(printAdapters, /multi_table_union/);
@@ -388,6 +399,13 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   assert.doesNotMatch(popupHtmlForLayout, />2\. 파일명 정보</);
   assert.match(popupHtmlForLayout, /파일명이 다르면 아래에서 수정할 수 있습니다\./);
   pass("단계 번호 제거 + 파일명 정보 수정 위계 정리");
+  assert.match(popupSource, /const complete = Boolean\(data\.supplier\)/);
+  assert.match(popupSource, /data\.item \? sanitize\(data\.item, ""\) : ""/);
+  assert.match(popupSource, /품명 없이도 저장할 수 있습니다/);
+  assert.doesNotMatch(popupSource, /품명미확인/);
+  assert.doesNotMatch(background, /품명미확인/);
+  assert.match(popupHtmlForLayout, /품명 <small>선택<\/small>/);
+  pass("품명 선택값 처리 + 품명 미인식 시 저장 허용");
 
 
 
@@ -395,7 +413,7 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
 
 
 
-  const popupSource = read("popup.js");
+
   const popupHtml = read("popup.html");
   assert.match(popupHtml, /id="saveButton"[\s\S]*세금계산서 PDF 저장/);
   assert.doesNotMatch(popupHtml, /사이트 PDF 저장|현재 화면을 PDF로 만들기/);
@@ -416,6 +434,10 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   assert.equal(
     filenameContext.filenameTest.buildFilename({ date: "", supplier: "테스트상사", item: "청소용역" }),
     "세금계산서(테스트상사_청소용역).pdf"
+  );
+  assert.equal(
+    filenameContext.filenameTest.buildFilename({ date: "20260920", supplier: "(주)테스트보안", item: "" }),
+    "세금계산서(260920_(주)테스트보안).pdf"
   );
   assert.match(popupSource, /세금계산서\(\$\{details\.join\("_"\)\}\)\.pdf/);
   pass("괄호형 파일명 규칙을 미리보기와 실제 다운로드에 동일 적용");
@@ -457,10 +479,10 @@ async function authCase({ body, hostname = "link.smileedi.com", includeInput = t
   pass("사이트 PDF 빈 문서 의심 차단 + generic 보수적 호환");
 
   const manifest = JSON.parse(read("manifest.json"));
-  assert.equal(manifest.version, "1.8.15");
+  assert.equal(manifest.version, "1.8.17");
   assert.deepEqual(manifest.permissions, ["activeTab", "debugger", "downloads", "scripting", "storage"]);
-  assert.deepEqual(manifest.host_permissions, ["*://*.freebill.co.kr/*", "*://*.ecount.com/*", "*://*.etradebill.co.kr/*", "*://*.taxbill365.com/*"]);
-  pass("v1.8.15 버전 + 기존 호스트 권한 유지");
+  assert.deepEqual(manifest.host_permissions, ["*://*.freebill.co.kr/*", "*://*.ecount.com/*", "*://*.etradebill.co.kr/*", "*://*.taxbill365.com/*", "*://*.smartbill.co.kr/*"]);
+  pass("v1.8.17 버전 + SmartBill 호스트 권한 유지");
   for (const size of [16, 32, 48, 128, 256, 512, 1024]) {
     assert.ok(fs.existsSync(path.join(root, "icons", `icon-${size}.png`)));
   }

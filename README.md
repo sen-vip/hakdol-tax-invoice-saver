@@ -7,11 +7,33 @@ Chrome과 네이버 웨일 등 Chromium 기반 브라우저에서 사용할 수 
 
 현재 버전: `v1.8.22`
 
-## ⬇️ 설치 파일 다운로드
+## 🚀 설치
 
 **[최신 버전 바로 다운로드](https://github.com/sen-vip/hakdol-tax-invoice-saver/releases/latest/download/hakdol-tax-invoice-saver.zip)**
 
 `hakdol-tax-invoice-saver.zip` 파일을 다운로드한 뒤 압축을 풀어 설치해 주세요.
+
+처음 설치한다면 아래 이미지를 참고해 주세요.
+
+![Chrome·Whale 확장도구 설치 가이드](docs/chrome-whale-extension-install-guide.png)
+
+### Google Chrome
+
+1. ZIP 파일의 압축을 풉니다.
+2. 주소창에 `chrome://extensions`를 입력합니다.
+3. 오른쪽 위의 `개발자 모드`를 켭니다.
+4. `압축해제된 확장 프로그램을 로드합니다`를 누릅니다.
+5. 압축을 푼 폴더에서 `manifest.json`이 들어 있는 폴더를 선택합니다.
+
+### 네이버 웨일
+
+1. ZIP 파일의 압축을 풉니다.
+2. 주소창에 `whale://extensions`를 입력합니다.
+3. 오른쪽 위의 `개발자 모드`를 켭니다.
+4. `압축해제 된 확장앱 설치`를 누릅니다.
+5. 압축을 푼 폴더에서 `manifest.json`이 들어 있는 폴더를 선택합니다.
+
+업데이트한 뒤에는 확장프로그램 관리 화면에서 다시 로드해 주세요.
 
 ## 📌 주요 기능
 
@@ -41,30 +63,6 @@ Chrome과 네이버 웨일 등 Chromium 기반 브라우저에서 사용할 수 
 그 밖의 사이트에서도 공통 인식·PDF 저장 방식으로 동작을 시도합니다.
 
 사이트의 화면 구조나 출력 방식이 변경되면 일부 기능이 정상 작동하지 않을 수 있습니다.
-
-## 🚀 설치
-
-처음 설치한다면 아래 이미지를 참고해 주세요.
-
-![Chrome·Whale 확장도구 설치 가이드](docs/chrome-whale-extension-install-guide.png)
-
-### Google Chrome
-
-1. ZIP 파일의 압축을 풉니다.
-2. 주소창에 `chrome://extensions`를 입력합니다.
-3. 오른쪽 위의 `개발자 모드`를 켭니다.
-4. `압축해제된 확장 프로그램을 로드합니다`를 누릅니다.
-5. 압축을 푼 폴더에서 `manifest.json`이 들어 있는 폴더를 선택합니다.
-   
-### 네이버 웨일
-
-1. ZIP 파일의 압축을 풉니다.
-2. 주소창에 `whale://extensions`를 입력합니다.
-3. 오른쪽 위의 `개발자 모드`를 켭니다.
-4. `압축해제 된 확장앱 설치`를 누릅니다.
-5. 압축을 푼 폴더에서 `manifest.json`이 들어 있는 폴더를 선택합니다.
-
-업데이트한 뒤에는 확장프로그램 관리 화면에서 다시 로드해 주세요.
 
 ## 🧾 사용 방법
 

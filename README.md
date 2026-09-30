@@ -7,6 +7,12 @@ Chrome과 네이버 웨일 등 Chromium 기반 브라우저에서 사용할 수 
 
 현재 버전: `v1.8.22`
 
+## ⬇️ 설치 파일 다운로드
+
+**[최신 버전 바로 다운로드](https://github.com/sen-vip/hakdol-tax-invoice-saver/releases/latest/download/hakdol-tax-invoice-saver.zip)**
+
+`hakdol-tax-invoice-saver.zip` 파일을 다운로드한 뒤 압축을 풀어 설치해 주세요.
+
 ## 📌 주요 기능
 
 - 업체명·품명·작성일·합계금액 자동 인식
@@ -37,6 +43,10 @@ Chrome과 네이버 웨일 등 Chromium 기반 브라우저에서 사용할 수 
 사이트의 화면 구조나 출력 방식이 변경되면 일부 기능이 정상 작동하지 않을 수 있습니다.
 
 ## 🚀 설치
+
+처음 설치한다면 아래 이미지를 참고해 주세요.
+
+![Chrome·Whale 확장도구 설치 가이드](docs/chrome-whale-extension-install-guide.png)
 
 ### 네이버 웨일
 

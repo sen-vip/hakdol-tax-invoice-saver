@@ -61,7 +61,6 @@ function currentData() {
 
 function refreshPreview() {
   const data = currentData();
-  // 업체명은 파일 식별을 위한 필수값, 품명과 작성일은 선택값입니다.
   const complete = Boolean(data.supplier);
   const details = [
     filenameDate(data.date),
@@ -389,8 +388,8 @@ async function autoHandleAccessGate() {
 
 async function savePdf(options = {}) {
   const data = currentData();
-  if (!data.supplier || !data.item) {
-    setStatus("업체명·품명을 확인해주세요.", "error");
+  if (!data.supplier) {
+    setStatus("업체명을 확인해주세요.", "error");
     return false;
   }
 
@@ -427,6 +426,7 @@ async function savePdf(options = {}) {
       type: "SAVE_TAX_INVOICE_PDF",
       tabId: tab.id,
       data,
+      filename: filenamePreview.textContent.trim(),
       orientation: "portrait"
     });
 

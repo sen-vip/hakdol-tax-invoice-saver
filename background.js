@@ -84,6 +84,19 @@ function buildFilename(data) {
   return `세금계산서(${details}).pdf`;
 }
 
+function requestedFilename(value, data) {
+  const name = String(value || "").trim();
+  if (
+    name.length >= 8 &&
+    name.length <= 180 &&
+    /^세금계산서\(.+\)\.pdf$/i.test(name) &&
+    !/[\\/:*?"<>|\x00-\x1F]/.test(name)
+  ) {
+    return name;
+  }
+  return buildFilename(data || {});
+}
+
 async function detachQuietly(target) {
   try {
     await chrome.debugger.detach(target);
@@ -155,6 +168,9 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
   let adapter = "generic";
   let strategy = "generic_print";
   let ecountHidden = null;
+  let smartbillCapture = null;
+  let hometaxCapture = null;
+  let standardInvoiceCapture = null;
 
   try {
     let states = [];
@@ -184,24 +200,40 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
       }
     }
 
-    if (!temporaryTabId && adapter === "ecount") {
+    // 도메인과 무관하게 "인쇄 + 첨부보기"와 강한 계산서 table이 있으면
+    // 그 표만 잘라 저장합니다. 홈택스 표준 양식을 다른 발행 사이트가 감싸는 경우도 처리합니다.
+    if (!temporaryTabId) {
+      const prepared = await pageCall(tabId, "prepareStandardInvoiceCapture").catch(() => []);
+      standardInvoiceCapture = preferredFrame(prepared, (result) =>
+        result?.applied && result.width >= 350 && result.height >= 180
+      )?.result || null;
+      if (standardInvoiceCapture) {
+        strategy = "standard_invoice_capture_ready";
+      }
+    }
+
+    if (!temporaryTabId && !standardInvoiceCapture && adapter === "ecount") {
       const prepared = await pageCall(tabId, "prepareEcount");
       const applied = preferredFrame(prepared, (result) => result?.applied || result?.modalDetected);
       ecountHidden = applied?.result || null;
       strategy = "ecount_clean_print";
       if (ecountHidden?.modalDetected) console.info("[Hakdol PDF] print settings modal detected");
-    } else if (!temporaryTabId && adapter === "hometax") {
-      await pageCall(tabId, "prepareHometax");
-      strategy = "hometax_clean_print";
-    } else if (!temporaryTabId && adapter === "smartbill") {
-      // SmartBill 비회원 조회는 세션 의존성이 강하므로 새 인쇄 URL을 만들지 않고
-      // 현재 계산서 탭에서 본문 박스를 직접 저장합니다.
-      strategy = "smartbill_current_tab";
+    } else if (!temporaryTabId && !standardInvoiceCapture && adapter === "hometax") {
+      const prepared = await pageCall(tabId, "prepareHometaxCapture").catch(() => []);
+      hometaxCapture = preferredFrame(prepared, (result) =>
+        result?.applied && result.width >= 350 && result.height >= 180
+      )?.result || null;
+      strategy = hometaxCapture ? "hometax_capture_ready" : "hometax_capture_not_found";
+    } else if (!temporaryTabId && !standardInvoiceCapture && adapter === "smartbill") {
+      const prepared = await pageCall(tabId, "prepareSmartbillCapture").catch(() => []);
+      smartbillCapture = preferredFrame(prepared, (result) =>
+        result?.applied && result.width >= 350 && result.height >= 180
+      )?.result || null;
+      strategy = smartbillCapture ? "smartbill_capture_ready" : "smartbill_capture_not_found";
     }
 
-    // 사이트별 예외처리를 먼저 적용한 뒤,
-    // 가능한 모든 사이트에서 실제 세금계산서 본체 박스만 남깁니다.
-    if (!temporaryTabId && adapter !== "taxbill365") {
+    // 사이트별 전용 crop 대상은 공통 DOM 출력 정리에서 제외합니다.
+    if (!temporaryTabId && !standardInvoiceCapture && !["taxbill365", "smartbill", "hometax"].includes(adapter)) {
       const boxed = await pageCall(tabId, "prepareInvoiceBoxOnly").catch(() => []);
       if (preferredFrame(boxed, (result) => result?.applied)) {
         strategy = `${adapter}_invoice_box`;
@@ -237,60 +269,67 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
         attached = false;
         outputTabId = tabId;
         target = { tabId };
-        if (adapter === "smartbill") {
-          const prepared = await pageCall(tabId, "prepareInvoiceBoxOnly", "smartbill");
-          strategy = preferredFrame(prepared, (result) => result?.applied)
-            ? "smartbill_invoice_box_fallback"
-            : "smartbill_generic_fallback";
-        } else {
-          strategy = "smileedi_invoice_capture_fallback";
-        }
+        strategy = "smileedi_invoice_capture_fallback";
         await chrome.debugger.attach(target, DEBUGGER_VERSION);
         attached = true;
         await chrome.debugger.sendCommand(target, "Page.enable");
       }
     }
 
-    if (!data && adapter === "smartbill" && outputTabId === tabId) {
-      // SmartBill의 비회원 상세 URL은 세션/조회 상태에 의존합니다.
-      // 별도 인쇄 탭을 새로 여는 대신 현재 열린 계산서 영역을 그대로 캡처합니다.
-      let regions = await pageCall(tabId, "invoiceRegion").catch(() => []);
-      let region = preferredFrame(
-        regions,
-        (result) => result && result.width >= 350 && result.height >= 180
-      )?.result;
-
-      // 단일 컨테이너 탐지가 안 되면 여러 표를 합친 시각적 계산서 영역을 재시도합니다.
-      if (!region) {
-        regions = await pageCall(tabId, "invoiceVisualRegion").catch(() => []);
-        region = preferredFrame(
-          regions,
-          (result) => result && result.width >= 350 && result.height >= 180
-        )?.result;
+    if (!data && standardInvoiceCapture && outputTabId === tabId) {
+      console.info("[Hakdol PDF] Standard invoice-table crop:", standardInvoiceCapture.source || "unknown");
+      const shot = await chrome.debugger.sendCommand(target, "Page.captureScreenshot", {
+        format: "jpeg",
+        quality: 95,
+        captureBeyondViewport: true,
+        clip: {
+          x: standardInvoiceCapture.x,
+          y: standardInvoiceCapture.y,
+          width: standardInvoiceCapture.width,
+          height: standardInvoiceCapture.height,
+          scale: 1
+        }
+      });
+      data = await screenshotPdf(shot?.data, effectiveOrientation);
+      strategy = "standard_invoice_table_crop";
+    } else if (!data && adapter === "hometax" && outputTabId === tabId) {
+      if (!hometaxCapture) {
+        throw new Error("홈택스 계산서 본문을 분리하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.");
       }
-
-      if (region) {
-        console.info("[Hakdol PDF] SmartBill current-tab invoice crop");
-        const shot = await chrome.debugger.sendCommand(target, "Page.captureScreenshot", {
-          format: "jpeg",
-          quality: 95,
-          captureBeyondViewport: true,
-          clip: {
-            x: region.x,
-            y: region.y,
-            width: region.width,
-            height: region.height,
-            scale: 1
-          }
-        });
-        data = await screenshotPdf(shot?.data, effectiveOrientation);
-        strategy = "smartbill_current_tab_crop";
-      } else {
-        console.info("[Hakdol PDF] SmartBill invoice region not found; current-tab print fallback");
-        const result = await chrome.debugger.sendCommand(target, "Page.printToPDF", printOptions);
-        data = result?.data;
-        strategy = "smartbill_current_tab_print_fallback";
+      console.info("[Hakdol PDF] HomeTax invoice-table crop");
+      const shot = await chrome.debugger.sendCommand(target, "Page.captureScreenshot", {
+        format: "jpeg",
+        quality: 95,
+        captureBeyondViewport: true,
+        clip: {
+          x: hometaxCapture.x,
+          y: hometaxCapture.y,
+          width: hometaxCapture.width,
+          height: hometaxCapture.height,
+          scale: 1
+        }
+      });
+      data = await screenshotPdf(shot?.data, effectiveOrientation);
+      strategy = "hometax_invoice_table_crop";
+    } else if (!data && adapter === "smartbill" && outputTabId === tabId) {
+      if (!smartbillCapture) {
+        throw new Error("SmartBill 계산서 본문을 분리하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.");
       }
+      console.info("[Hakdol PDF] SmartBill strict invoice capture");
+      const shot = await chrome.debugger.sendCommand(target, "Page.captureScreenshot", {
+        format: "jpeg",
+        quality: 95,
+        captureBeyondViewport: true,
+        clip: {
+          x: smartbillCapture.x,
+          y: smartbillCapture.y,
+          width: smartbillCapture.width,
+          height: smartbillCapture.height,
+          scale: 1
+        }
+      });
+      data = await screenshotPdf(shot?.data, effectiveOrientation);
+      strategy = "smartbill_strict_invoice_capture";
     } else if (!data && adapter === "taxbill365" && outputTabId === tabId) {
       const regions = await pageCall(tabId, "invoiceVisualRegion").catch(() => []);
       const region = preferredFrame(
@@ -349,7 +388,7 @@ async function printCurrentTabToPdf(tabId, filename, orientation) {
       data = result?.data;
     }
 
-    validatePdf(data, ["smileedi", "ecount", "smartbill", "taxbill365"].includes(adapter));
+    validatePdf(data, ["smileedi", "ecount", "smartbill", "hometax", "taxbill365"].includes(adapter));
 
     await detachQuietly(target);
     attached = false;
@@ -454,7 +493,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type !== "SAVE_TAX_INVOICE_PDF") return false;
 
-  const filename = buildFilename(message.data || {});
+  const filename = requestedFilename(message.filename, message.data || {});
   printCurrentTabToPdf(message.tabId, filename, message.orientation || "auto")
     .then(({ downloadId, adapter, strategy, ecountHidden }) => sendResponse({
       ok: true,

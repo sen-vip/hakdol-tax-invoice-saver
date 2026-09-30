@@ -199,6 +199,295 @@
     return { applied: state.records.length > 0, hidden, modalDetected: hidden.modal > 0 };
   }
 
+  function findSmartbillInvoiceElement() {
+    if (identify() !== "smartbill") return null;
+    const junkPattern = /(?:담당자\s*정보|메일\s*수신\s*확인|문서\s*History|국세청\s*전송\s*결과|신용도\s*확인|받은\s*세금계산서|위탁\s*세금계산서|참조인\s*세금계산서|광고\s*등록|고객\s*센터|회사\s*소개|Family\s*Site|앱\s*다운로드|Hotels?\.com|Adobe\s*AI|마이페이지|로그아웃)/i;
+    const corePatterns = [/전자\s*세금\s*계산서/, /공급\s*자/, /공급\s*받는\s*자/, /작성\s*일자/, /품\s*목/, /합계\s*금액/];
+    const candidates = [...document.querySelectorAll("table, div, section, article, main")]
+      .filter(visible)
+      .map((element) => {
+        const value = text(element);
+        const rect = element.getBoundingClientRect();
+        const core = corePatterns.filter((pattern) => pattern.test(value)).length;
+        return { element, value, rect, core, junk: junkPattern.test(value), area: Math.max(1, rect.width * rect.height), table: element.tagName === "TABLE" };
+      })
+      .filter((entry) => entry.core >= 6 && !entry.junk && entry.rect.width >= 350 && entry.rect.height >= 180 && entry.rect.width < 5000 && entry.rect.height < 8000)
+      .sort((a, b) => Number(b.table) - Number(a.table) || a.area - b.area);
+    return candidates[0]?.element || null;
+  }
+
+  function prepareSmartbillCapture() {
+    if (identify() !== "smartbill") return { applied: false, reason: "wrong_site" };
+    const invoice = findSmartbillInvoiceElement();
+    if (!invoice) return { applied: false, reason: "invoice_not_found" };
+
+    const state = startRestoreState("smartbill_capture");
+    let child = invoice;
+    for (let parent = invoice.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      for (const sibling of parent.children) {
+        if (sibling === child) continue;
+        record(sibling, state.records);
+        sibling.style.setProperty("visibility", "hidden", "important");
+        sibling.style.setProperty("pointer-events", "none", "important");
+      }
+      child = parent;
+    }
+    if (child.parentElement === document.body) {
+      for (const sibling of document.body.children) {
+        if (sibling === child) continue;
+        record(sibling, state.records);
+        sibling.style.setProperty("visibility", "hidden", "important");
+        sibling.style.setProperty("pointer-events", "none", "important");
+      }
+    }
+
+    const invoiceRect = invoice.getBoundingClientRect();
+    const overlays = [...document.querySelectorAll("body *")]
+      .filter((element) => element !== invoice && !invoice.contains(element) && !element.contains(invoice))
+      .filter(visible)
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        const value = text(element);
+        const overlaps = rect.right > invoiceRect.left && rect.left < invoiceRect.right &&
+          rect.bottom > invoiceRect.top && rect.top < invoiceRect.bottom;
+        const overlayPosition = style.position === "fixed" || style.position === "sticky";
+        const highZ = Number.parseInt(style.zIndex, 10) >= 1000;
+        const adLike = /광고|AD|닫기|×|✕|Hotels?\.com|Adobe|NESPRESSO|Gmarket/i.test(value);
+        return overlaps && (overlayPosition || highZ || adLike);
+      });
+    for (const overlay of overlays) {
+      record(overlay, state.records);
+      overlay.style.setProperty("visibility", "hidden", "important");
+      overlay.style.setProperty("pointer-events", "none", "important");
+    }
+
+    const rect = rectToTopWindow(invoice.getBoundingClientRect());
+    if (!rect) {
+      restore();
+      return { applied: false, reason: "coordinate_failed" };
+    }
+    const pad = 6;
+    return {
+      applied: true,
+      x: Math.max(0, rect.x - pad),
+      y: Math.max(0, rect.y - pad),
+      width: rect.width + pad * 2,
+      height: rect.height + pad * 2,
+      scale: 1,
+      source: "smartbill_strict_element"
+    };
+  }
+
+  function findStandardInvoiceTable() {
+    const corePatterns = [
+      /전자\s*세금\s*계산서/,
+      /승인\s*번호/,
+      /공급\s*자/,
+      /공급\s*받는\s*자/,
+      /작성\s*일자/,
+      /품\s*목/,
+      /합계\s*금액/
+    ];
+
+    const candidates = [...document.querySelectorAll("table")]
+      .filter(visible)
+      .map((element) => {
+        const value = text(element);
+        const rect = element.getBoundingClientRect();
+        const core = corePatterns.filter((pattern) => pattern.test(value)).length;
+        const area = Math.max(1, rect.width * rect.height);
+        const bad = /(?:담당자\s*정보|문서\s*History|국세청\s*전송\s*결과|광고\s*등록|Family\s*Site)/i.test(value);
+        return { element, value, rect, core, area, bad };
+      })
+      .filter((entry) =>
+        entry.core >= 6 &&
+        !entry.bad &&
+        entry.rect.width >= 350 &&
+        entry.rect.height >= 180 &&
+        entry.rect.width < 5000 &&
+        entry.rect.height < 8000
+      )
+      .sort((a, b) => a.area - b.area);
+
+    return candidates[0]?.element || null;
+  }
+
+  function hasPrintAttachmentPair() {
+    const labels = [...document.querySelectorAll("button, a, input[type='button'], input[type='submit'], [role='button']")]
+      .filter(visible)
+      .map((element) =>
+        String(element.innerText || element.value || element.getAttribute("aria-label") || "")
+          .replace(/\s+/g, "")
+          .trim()
+      );
+    return labels.includes("인쇄") && labels.includes("첨부보기");
+  }
+
+  function prepareStandardInvoiceCapture() {
+    // 도메인이 무엇이든 "인쇄 + 첨부보기"가 있고,
+    // 강한 세금계산서 본문 table 증거가 있으면 그 표만 저장합니다.
+    if (!hasPrintAttachmentPair()) return { applied: false, reason: "controls_not_found" };
+
+    const invoice = findStandardInvoiceTable();
+    if (!invoice) return { applied: false, reason: "invoice_table_not_found" };
+
+    const state = startRestoreState("standard_invoice_capture");
+
+    // 버튼은 crop 밖이어도 혹시 겹치는 경우를 막기 위해 숨깁니다.
+    const controls = [...document.querySelectorAll("button, a, input[type='button'], input[type='submit'], [role='button']")]
+      .filter(visible)
+      .filter((element) => /^(?:인쇄|첨부보기)$/.test(
+        String(element.innerText || element.value || element.getAttribute("aria-label") || "")
+          .replace(/\s+/g, "")
+          .trim()
+      ));
+
+    for (const control of controls) {
+      record(control, state.records);
+      control.style.setProperty("visibility", "hidden", "important");
+      control.style.setProperty("pointer-events", "none", "important");
+    }
+
+    // 표 위를 덮는 fixed/sticky 요소가 있으면 캡처 중에만 숨깁니다.
+    const invoiceRect = invoice.getBoundingClientRect();
+    const overlays = [...document.querySelectorAll("body *")]
+      .filter((element) => element !== invoice && !invoice.contains(element) && !element.contains(invoice))
+      .filter(visible)
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        const overlaps =
+          rect.right > invoiceRect.left &&
+          rect.left < invoiceRect.right &&
+          rect.bottom > invoiceRect.top &&
+          rect.top < invoiceRect.bottom;
+        return overlaps && (
+          style.position === "fixed" ||
+          style.position === "sticky" ||
+          Number.parseInt(style.zIndex, 10) >= 1000
+        );
+      });
+
+    for (const overlay of overlays) {
+      record(overlay, state.records);
+      overlay.style.setProperty("visibility", "hidden", "important");
+      overlay.style.setProperty("pointer-events", "none", "important");
+    }
+
+    const rect = rectToTopWindow(invoice.getBoundingClientRect());
+    if (!rect) {
+      restore();
+      return { applied: false, reason: "coordinate_failed" };
+    }
+
+    const pad = 4;
+    return {
+      applied: true,
+      x: Math.max(0, rect.x - pad),
+      y: Math.max(0, rect.y - pad),
+      width: rect.width + pad * 2,
+      height: rect.height + pad * 2,
+      scale: 1,
+      source: "standard_invoice_table"
+    };
+  }
+
+  function findHometaxInvoiceElement() {
+    if (identify() !== "hometax") return null;
+
+    const standard = findStandardInvoiceTable();
+    if (standard) return standard;
+
+    const corePatterns = [
+      /전자\s*세금\s*계산서/,
+      /승인\s*번호/,
+      /공급\s*자/,
+      /공급\s*받는\s*자/,
+      /작성\s*일자/,
+      /품\s*목/,
+      /합계\s*금액/
+    ];
+
+    const tables = [...document.querySelectorAll("table")]
+      .filter(visible)
+      .map((element) => {
+        const value = text(element);
+        const rect = element.getBoundingClientRect();
+        const core = corePatterns.filter((pattern) => pattern.test(value)).length;
+        // 실제 계산서 본문 하단 안내문에도 hometax.go.kr가 들어가므로
+        // 도메인/홈택스 문구 자체는 junk로 보지 않습니다.
+        const junk = /(?:발급사실|조회\/발급)/i.test(value);
+        return { element, value, rect, core, junk, area: Math.max(1, rect.width * rect.height) };
+      })
+      .filter((entry) => entry.core >= 6 && !entry.junk && entry.rect.width >= 350 && entry.rect.height >= 180 && entry.rect.width < 5000 && entry.rect.height < 8000)
+      .sort((a, b) => a.area - b.area);
+
+    if (tables[0]) return tables[0].element;
+
+    // 드물게 table 바깥 wrapper가 실제 계산서 본문일 수 있으므로 보수적으로 한 번 더 찾습니다.
+    const generic = findInvoiceElement();
+    if (!generic) return null;
+    const value = text(generic);
+    if (/인쇄|첨부보기/.test(value) || !/합계\s*금액/.test(value)) return null;
+    return generic;
+  }
+
+  function prepareHometaxCapture() {
+    if (identify() !== "hometax") return { applied: false, reason: "wrong_site" };
+    const invoice = findHometaxInvoiceElement();
+    if (!invoice) return { applied: false, reason: "invoice_not_found" };
+
+    const state = startRestoreState("hometax_invoice_capture");
+
+    // 위쪽 인쇄/첨부보기 버튼은 캡처 영역 밖이어도 혹시 겹치는 경우를 위해 숨깁니다.
+    const controls = [...document.querySelectorAll("button, a, input[type='button'], input[type='submit'], [role='button']")]
+      .filter(visible)
+      .filter((element) => /^(?:인쇄|첨부보기)$/.test(
+        String(element.innerText || element.value || element.getAttribute("aria-label") || "")
+          .replace(/\s+/g, "")
+          .trim()
+      ));
+    for (const control of controls) {
+      record(control, state.records);
+      control.style.setProperty("visibility", "hidden", "important");
+      control.style.setProperty("pointer-events", "none", "important");
+    }
+
+    const invoiceRect = invoice.getBoundingClientRect();
+    const overlays = [...document.querySelectorAll("body *")]
+      .filter((element) => element !== invoice && !invoice.contains(element) && !element.contains(invoice))
+      .filter(visible)
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        const overlaps = rect.right > invoiceRect.left && rect.left < invoiceRect.right &&
+          rect.bottom > invoiceRect.top && rect.top < invoiceRect.bottom;
+        return overlaps && (style.position === "fixed" || style.position === "sticky" || Number.parseInt(style.zIndex, 10) >= 1000);
+      });
+    for (const overlay of overlays) {
+      record(overlay, state.records);
+      overlay.style.setProperty("visibility", "hidden", "important");
+      overlay.style.setProperty("pointer-events", "none", "important");
+    }
+
+    const rect = rectToTopWindow(invoice.getBoundingClientRect());
+    if (!rect) {
+      restore();
+      return { applied: false, reason: "coordinate_failed" };
+    }
+    const pad = 4;
+    return {
+      applied: true,
+      x: Math.max(0, rect.x - pad),
+      y: Math.max(0, rect.y - pad),
+      width: rect.width + pad * 2,
+      height: rect.height + pad * 2,
+      scale: 1,
+      source: "hometax_invoice_table"
+    };
+  }
+
   function prepareHometax() {
     if (identify() !== "hometax") return { applied: false, reason: "wrong_site" };
     const invoice = findInvoiceElement();
@@ -560,6 +849,9 @@
     inspect,
     prepareEcount,
     prepareHometax,
+    prepareHometaxCapture,
+    prepareStandardInvoiceCapture,
+    prepareSmartbillCapture,
     prepareInvoiceBoxOnly,
     prepareInvoiceOnly,
     invoiceVisualRegion,
